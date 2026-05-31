@@ -8,6 +8,7 @@ from analyzers.eye_contact import analyze as analyze_eyes
 
 UPLOAD_DIR = "uploads"
 TRANSCRIPT_DIR = "transcripts"
+FILENAME = "interview.webm"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(TRANSCRIPT_DIR, exist_ok=True)
 
@@ -15,7 +16,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -32,10 +33,11 @@ def root():
 # ── Step 1: Upload ────────────────────────────────────────────────────────────
 @app.post("/upload")
 async def upload_recording(file: UploadFile = File(...)):
-    dest = os.path.join(UPLOAD_DIR, file.filename)
+    filename = file.filename or FILENAME
+    dest = os.path.join(UPLOAD_DIR, filename)
     with open(dest, "wb") as f:
         f.write(await file.read())
-    return {"status": "saved", "filename": file.filename}
+    return {"status": "saved", "filename": filename}
 
 
 # ── Step 2: Transcribe ────────────────────────────────────────────────────────

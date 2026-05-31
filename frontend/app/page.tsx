@@ -43,7 +43,15 @@ export default function Home() {
     }
   };
 
-  useEffect(() => () => streamRef.current?.getTracks().forEach((t) => t.stop()), []);
+  useEffect(() => {
+    return () => streamRef.current?.getTracks().forEach((t) => t.stop());
+  }, []);
+
+  useEffect(() => {
+    if (active && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [active]);
 
   // ── Recording ───────────────────────────────────────────────────────────────
   const startRecording = () => {
@@ -70,10 +78,14 @@ export default function Home() {
     form.append("file", blob, FILENAME);
     try {
       const res = await fetch(`${API}/upload`, { method: "POST", body: form });
-      if (!res.ok) throw new Error();
+      const data = await res.json();
+      console.log("Upload response:", res.status, data);
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${JSON.stringify(data)}`);
       setUploadStatus("success");
-    } catch {
+    } catch (err) {
+      console.error("Upload error:", err);
       setUploadStatus("error");
+      setCameraError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -133,10 +145,12 @@ export default function Home() {
 
       {cameraError && <p style={{ color: "red", marginTop: "0.5rem" }}>{cameraError}</p>}
 
-      <div style={{ marginTop: "1rem" }}>
-        <video ref={videoRef} autoPlay playsInline width="640" height="480"
-          style={{ borderRadius: 8, background: "#000", display: "block" }} />
-      </div>
+      {active && (
+        <div style={{ marginTop: "1rem" }}>
+          <video ref={videoRef} autoPlay playsInline muted width="640" height="480"
+            style={{ borderRadius: 8, background: "#000", display: "block" }} />
+        </div>
+      )}
 
       {recordedUrl && (
         <section style={{ marginTop: "1.5rem" }}>

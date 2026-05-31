@@ -30,9 +30,11 @@ export default function Controls({
   return (
     <div>
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-        <button style={btn} onClick={onStartCamera} disabled={active}>
-          {active ? "📷 Camera On" : "Start Interview"}
-        </button>
+        {!active && (
+          <button style={btn} onClick={onStartCamera}>
+            🎥 Enable Camera
+          </button>
+        )}
         {active && (
           <>
             <button
