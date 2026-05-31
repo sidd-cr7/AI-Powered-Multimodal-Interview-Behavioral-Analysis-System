@@ -6,6 +6,8 @@ export type TranscriptResult = {
   word_count: number;
   duration_seconds: number;
   speaking_rate_wpm: number;
+  avg_logprob: number | null;
+  status: "ok" | "silent_audio";
 };
 
 export type FaceResult = {

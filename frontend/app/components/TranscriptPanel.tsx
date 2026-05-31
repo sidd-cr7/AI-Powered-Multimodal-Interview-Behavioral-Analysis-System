@@ -26,7 +26,14 @@ export default function TranscriptPanel({ result, loading, error, onFetch }: Pro
             <Stat label="Word Count"      value={result.word_count} />
             <Stat label="Duration"        value={`${result.duration_seconds}s`} />
             <Stat label="Speaking Rate"   value={`${result.speaking_rate_wpm} wpm`} />
+            {result.avg_logprob !== null && (
+              <Stat label="Confidence" value={result.avg_logprob} />
+            )}
           </div>
+
+          {result.status === "silent_audio" && (
+            <p style={{ color: "orange", marginTop: "0.5rem" }}>⚠ Silent or no speech detected.</p>
+          )}
 
           <div style={transcriptBox}>
             <strong>Transcript:</strong>
