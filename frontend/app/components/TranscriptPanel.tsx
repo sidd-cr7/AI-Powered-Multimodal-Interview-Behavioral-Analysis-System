@@ -23,12 +23,11 @@ export default function TranscriptPanel({ result, loading, error, onFetch }: Pro
       {result && (
         <>
           <div style={grid}>
-            <Stat label="Word Count"      value={result.word_count} />
-            <Stat label="Duration"        value={`${result.duration_seconds}s`} />
-            <Stat label="Speaking Rate"   value={`${result.speaking_rate_wpm} wpm`} />
-            {result.avg_logprob !== null && (
-              <Stat label="Confidence" value={result.avg_logprob} />
-            )}
+            <Stat label="Word Count"    value={result.word_count} />
+            <Stat label="Duration"      value={`${result.duration_seconds}s`} />
+            <Stat label="Speaking Rate" value={`${result.speaking_rate_wpm} wpm`} />
+            <Stat label="Confidence"    value={`${result.confidence_score}%`} color={qualityColor(result.transcript_quality)} />
+            <Stat label="Quality"       value={result.transcript_quality.toUpperCase()} color={qualityColor(result.transcript_quality)} />
           </div>
 
           {result.status === "silent_audio" && (
@@ -45,11 +44,15 @@ export default function TranscriptPanel({ result, loading, error, onFetch }: Pro
   );
 }
 
-function Stat({ label, value }: { label: string; value: string | number }) {
+function qualityColor(q: string) {
+  return q === "excellent" ? "#28a745" : q === "good" ? "#5ba85b" : q === "fair" ? "#fd7e14" : "#dc3545";
+}
+
+function Stat({ label, value, color }: { label: string; value: string | number; color?: string }) {
   return (
     <div style={statCard}>
       <div style={{ fontSize: "0.75rem", color: "#666" }}>{label}</div>
-      <div style={{ fontSize: "1.3rem", fontWeight: 700 }}>{value}</div>
+      <div style={{ fontSize: "1.3rem", fontWeight: 700, color: color ?? "#111" }}>{value}</div>
     </div>
   );
 }

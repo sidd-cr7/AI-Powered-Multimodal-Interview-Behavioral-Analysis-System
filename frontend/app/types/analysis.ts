@@ -6,7 +6,8 @@ export type TranscriptResult = {
   word_count: number;
   duration_seconds: number;
   speaking_rate_wpm: number;
-  avg_logprob: number | null;
+  confidence_score: number;
+  transcript_quality: "excellent" | "good" | "fair" | "poor";
   status: "ok" | "silent_audio";
 };
 

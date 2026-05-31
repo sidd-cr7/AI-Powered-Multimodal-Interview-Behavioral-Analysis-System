@@ -1,60 +1,44 @@
 import re
 
-# ── Filler word definitions ───────────────────────────────────────────────────
-# Multi-word fillers must come before single-word ones so they match first
-FILLER_PATTERNS: list[tuple[str, str]] = [
-    ("you know",   r"\byou\s+know\b"),
-    ("sort of",    r"\bsort\s+of\b"),
-    ("kind of",    r"\bkind\s+of\b"),
-    ("um",         r"\bum+\b"),
-    ("uh",         r"\buh+\b"),
-    ("like",       r"\blike\b"),
-    ("actually",   r"\bactually\b"),
-    ("basically",  r"\bbasically\b"),
-    ("literally",  r"\bliterally\b"),
+FILLER_WORDS = [
+    "um", "uh", "like", "actually", "basically",
+    "literally", "you know", "sort of", "kind of",
 ]
 
-
 def analyze(transcript: str, duration_seconds: float) -> dict:
-    if not transcript.strip():
-        return {
-            "word_count": 0,
-            "sentence_count": 0,
-            "speaking_rate_wpm": 0.0,
-            "filler_word_count": 0,
-            "filler_rate": 0.0,
-            "filler_breakdown": {k: 0 for k, _ in FILLER_PATTERNS},
-        }
+    text  = transcript.strip()
+    lower = text.lower()
 
-    text_lower = transcript.lower()
-
-    # Word and sentence counts
-    words = transcript.split()
+    words     = text.split()
     word_count = len(words)
-    sentence_count = len(re.findall(r"[.!?]+", transcript)) or 1
+    sentences  = [s.strip() for s in re.split(r"[.!?]+", text) if s.strip()]
+    sentence_count = len(sentences) or 1
+    avg_words_per_sentence = round(word_count / sentence_count, 1)
 
-    # Speaking rate
-    speaking_rate_wpm = round((word_count / duration_seconds) * 60, 1) if duration_seconds > 0 else 0.0
+    speaking_rate_wpm = round((word_count / duration_seconds) * 60, 1) if duration_seconds > 0 and word_count > 0 else 0
 
-    # Filler detection — count each pattern independently
+    unique_words       = {w.lower().strip(".,!?;:\"'") for w in words}
+    unique_word_count  = len(unique_words)
+    vocabulary_diversity = round(unique_word_count / word_count, 3) if word_count > 0 else 0
+
     filler_breakdown: dict[str, int] = {}
-    total_fillers = 0
-    for label, pattern in FILLER_PATTERNS:
-        count = len(re.findall(pattern, text_lower))
-        filler_breakdown[label] = count
-        total_fillers += count
+    for filler in FILLER_WORDS:
+        pattern = r"\b" + re.escape(filler) + r"\b"
+        count   = len(re.findall(pattern, lower))
+        if count:
+            filler_breakdown[filler] = count
 
-    # Filler rate = fillers per 100 words
-    filler_rate = round((total_fillers / word_count) * 100, 1) if word_count > 0 else 0.0
-
-    # Strip zero-count fillers from breakdown for cleaner output
-    filler_breakdown = {k: v for k, v in filler_breakdown.items() if v > 0}
+    filler_word_count = sum(filler_breakdown.values())
+    filler_rate = round((filler_word_count / word_count) * 100, 1) if word_count > 0 else 0
 
     return {
-        "word_count": word_count,
-        "sentence_count": sentence_count,
-        "speaking_rate_wpm": speaking_rate_wpm,
-        "filler_word_count": total_fillers,
-        "filler_rate": filler_rate,
-        "filler_breakdown": filler_breakdown,
+        "word_count":               word_count,
+        "sentence_count":           sentence_count,
+        "average_words_per_sentence": avg_words_per_sentence,
+        "unique_word_count":        unique_word_count,
+        "speaking_rate_wpm":        speaking_rate_wpm,
+        "vocabulary_diversity":     vocabulary_diversity,
+        "filler_word_count":        filler_word_count,
+        "filler_rate":              filler_rate,
+        "filler_breakdown":         filler_breakdown,
     }
