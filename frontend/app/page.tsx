@@ -43,12 +43,17 @@ export default function Home() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
       setActive(true);
     } catch (err) {
       setCameraError(err instanceof Error ? err.message : "Camera access denied.");
     }
   };
+
+  useEffect(() => {
+    if (active && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [active]);
 
   useEffect(() => {
     return () => streamRef.current?.getTracks().forEach(t => t.stop());
@@ -143,9 +148,17 @@ export default function Home() {
       <h1 style={{ fontSize: "1.15rem", marginBottom: "0.25rem" }}>
         AI-Powered Multimodal Interview Behavioral Analysis System
       </h1>
-      <p style={{ fontSize: "0.8rem", color: "#888", marginBottom: "1.5rem" }}>
+      <p style={{ fontSize: "0.8rem", color: "#888", marginBottom: "1rem" }}>
         Professional Interview Assessment Platform
       </p>
+      <div style={{ marginBottom: "1.5rem", display: "flex", gap: "0.75rem" }}>
+        <span style={{ padding: "0.35rem 0.9rem", borderRadius: 6, background: "#1a1a2e", color: "#fff", fontSize: "0.85rem", fontWeight: 600 }}>
+          📋 Offline Assessment
+        </span>
+        <a href="/realtime" style={{ padding: "0.35rem 0.9rem", borderRadius: 6, background: "#28a745", color: "#fff", fontSize: "0.85rem", fontWeight: 600, textDecoration: "none" }}>
+          🔴 Real-Time Analysis
+        </a>
+      </div>
 
       <Controls
         active={active}

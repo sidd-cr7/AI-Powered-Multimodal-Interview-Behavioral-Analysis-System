@@ -3,8 +3,8 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import RealtimeDashboard from "../components/RealtimeDashboard";
 
-const WS_URL  = "ws://192.168.1.3:8000/ws/realtime";
-const FPS     = 1;          // frames per second sent to backend
+const WS_URL  = "ws://localhost:8000/ws/realtime";
+const FPS     = 5;          // frames per second sent to backend
 const SESSION = () => `rt_${Date.now()}`;
 
 type Metrics = {
@@ -84,13 +84,19 @@ export default function RealtimePage() {
     speechRef.current = rec;
   }, []);
 
+  // ── Attach stream to video after active=true mounts the element ──────────
+  useEffect(() => {
+    if (active && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [active]);
+
   // ── Start real-time session ───────────────────────────────────────────────
   const start = async () => {
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
 
       const sessionId = SESSION();
       const ws = new WebSocket(`${WS_URL}/${sessionId}`);
@@ -98,7 +104,6 @@ export default function RealtimePage() {
 
       ws.onopen = () => {
         setConnected(true);
-        // Start sending frames at FPS rate
         timerRef.current = setInterval(sendFrame, 1000 / FPS);
         startSpeech();
       };
@@ -108,8 +113,8 @@ export default function RealtimePage() {
         if (msg.type === "metrics") setMetrics(msg.payload);
       };
 
-      ws.onerror = () => setError("WebSocket connection failed.");
-      ws.onclose = () => { setConnected(false); };
+      ws.onerror = () => setError("WebSocket connection failed — is the backend running?");
+      ws.onclose = () => setConnected(false);
 
       setActive(true);
     } catch (err) {
