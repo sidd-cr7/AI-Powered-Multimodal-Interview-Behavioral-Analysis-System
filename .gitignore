@@ -8,6 +8,11 @@ venv/
 # Backend runtime folders (generated at runtime)
 backend/uploads/
 backend/transcripts/
+backend/data/sessions/
+
+# Python compiled
+backend/**/__pycache__/
+backend/**/*.pyc
 
 # Node / Next.js
 frontend/node_modules/

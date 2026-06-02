@@ -1,6 +1,7 @@
 import os
 import logging
 from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket
+from fastapi.responses import Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from analyzers.transcriber              import transcribe, get_duration
@@ -14,6 +15,10 @@ from analyzers.feedback_generator      import generate as generate_feedback
 from analyzers.voice_analyzer          import analyze as analyze_voice
 from analyzers.behavioral.engine       import analyze as analyze_behavior
 from analyzers.interview_coach         import generate_report as generate_coaching
+from analyzers.benchmark               import benchmark
+from history.store                     import save_session, load_session, list_sessions, compare_sessions, new_session_id
+from reporting.pdf_generator           import generate_pdf
+from reporting.routes                  import router as report_router
 from realtime.ws_handler               import handle_ws
 
 from models.schemas import (
@@ -43,6 +48,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(report_router)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

@@ -1,5 +1,61 @@
 export type UploadStatus = "idle" | "uploading" | "success" | "error";
 
+export type ReportMetrics = {
+  overall_score: number;
+  engagement_score: number;
+  professionalism_score: number;
+  confidence_score: number;
+  communication_mastery_score: number;
+  communication_score: number;
+  eye_contact_percentage: number;
+  face_presence_percentage: number;
+  speaking_rate_wpm: number;
+  vocabulary_diversity: number;
+  filler_word_count: number;
+  filler_rate: number;
+  voice_confidence_score: number;
+  clarity_score: number;
+  fluency_score: number;
+  attention_score: number;
+  posture_score: number;
+  professional_presence_score: number;
+  restlessness_score: number;
+  interview_readiness_score: number;
+  response_quality_score: number;
+  rating: string;
+  readiness_level: string;
+};
+
+export type SessionSummary = {
+  session_id: string;
+  timestamp: string;
+  filename: string;
+  role: string;
+  overall_score: number;
+  rating: string;
+  readiness_level: string;
+};
+
+export type ReportResult = {
+  session_id: string;
+  metrics: ReportMetrics;
+  benchmark: { candidate_level: string; candidate_avg: number; benchmark_comparison: Record<string, Record<string, number>> };
+  report_url: string;
+  csv_url: string;
+  json_url: string;
+};
+
+export type CompareResult = {
+  session_a_id: string;
+  session_b_id: string;
+  overall_improvement: number;
+  communication_improvement: number;
+  eye_contact_improvement: number;
+  voice_confidence_improvement: number;
+  readiness_improvement: number;
+  summary: string;
+};
+
 export type AssessmentResult = {
   transcript_analysis: {
     word_count: number;

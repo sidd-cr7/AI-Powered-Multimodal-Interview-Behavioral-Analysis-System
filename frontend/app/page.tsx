@@ -1,14 +1,17 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
-import Controls from "./components/Controls";
+import Controls       from "./components/Controls";
 import TranscriptPanel from "./components/TranscriptPanel";
-import FacePanel from "./components/FacePanel";
+import FacePanel      from "./components/FacePanel";
 import EyeContactPanel from "./components/EyeContactPanel";
 import AssessmentPanel from "./components/AssessmentPanel";
-import { UploadStatus, TranscriptResult, FaceResult, EyeResult, AssessmentResult } from "./types/analysis";
+import ReportPanel    from "./components/ReportPanel";
+import {
+  UploadStatus, TranscriptResult, FaceResult, EyeResult, AssessmentResult,
+} from "./types/analysis";
 
-const API      = "http://192.168.1.3:8000";
+const API      = "http://localhost:8000";
 const FILENAME = "interview.webm";
 
 export default function Home() {
@@ -31,10 +34,10 @@ export default function Home() {
   const [eyeResult,         setEyeResult]         = useState<EyeResult | null>(null);
   const [eyeLoading,        setEyeLoading]        = useState(false);
   const [assessment,        setAssessment]        = useState<AssessmentResult | null>(null);
-  const [assessmentLoading, setAssessmentLoading] = useState(false);
-  const [assessmentError,   setAssessmentError]   = useState<string | null>(null);
+  const [assessLoading,     setAssessLoading]     = useState(false);
+  const [assessError,       setAssessError]       = useState<string | null>(null);
 
-  // ── Camera ───────────────────────────────────────────────────────────────────
+  // ── Camera ──────────────────────────────────────────────────────────────────
   const startCamera = async () => {
     setCameraError(null);
     try {
@@ -48,21 +51,15 @@ export default function Home() {
   };
 
   useEffect(() => {
-    return () => streamRef.current?.getTracks().forEach((t) => t.stop());
+    return () => streamRef.current?.getTracks().forEach(t => t.stop());
   }, []);
 
-  useEffect(() => {
-    if (active && videoRef.current && streamRef.current) {
-      videoRef.current.srcObject = streamRef.current;
-    }
-  }, [active]);
-
-  // ── Recording ────────────────────────────────────────────────────────────────
+  // ── Recording ───────────────────────────────────────────────────────────────
   const startRecording = () => {
     if (!streamRef.current) return;
     chunksRef.current = [];
     const recorder = new MediaRecorder(streamRef.current);
-    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     recorder.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: "video/webm" });
       setRecordedUrl(URL.createObjectURL(blob));
@@ -75,25 +72,23 @@ export default function Home() {
 
   const stopRecording = () => { mediaRecorderRef.current?.stop(); setRecording(false); };
 
-  // ── Upload ───────────────────────────────────────────────────────────────────
+  // ── Upload ──────────────────────────────────────────────────────────────────
   const uploadRecording = async (blob: Blob) => {
     setUploadStatus("uploading");
     const form = new FormData();
     form.append("file", blob, FILENAME);
     try {
       const res = await fetch(`${API}/upload`, { method: "POST", body: form });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error();
       setUploadStatus("success");
-    } catch (err) {
+    } catch {
       setUploadStatus("error");
-      setCameraError(err instanceof Error ? err.message : String(err));
     }
   };
 
-  // ── Transcript ───────────────────────────────────────────────────────────────
+  // ── Transcript ──────────────────────────────────────────────────────────────
   const fetchTranscript = async () => {
-    setTranscriptLoading(true);
-    setTranscriptError(null);
+    setTranscriptLoading(true); setTranscriptError(null);
     try {
       const res = await fetch(`${API}/transcribe/${FILENAME}`, { method: "POST" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -105,7 +100,7 @@ export default function Home() {
     }
   };
 
-  // ── Face ─────────────────────────────────────────────────────────────────────
+  // ── Face ────────────────────────────────────────────────────────────────────
   const fetchFaceAnalysis = async () => {
     setFaceLoading(true);
     try {
@@ -116,7 +111,7 @@ export default function Home() {
     }
   };
 
-  // ── Eye contact ──────────────────────────────────────────────────────────────
+  // ── Eye contact ─────────────────────────────────────────────────────────────
   const fetchEyeContact = async () => {
     setEyeLoading(true);
     try {
@@ -127,32 +122,30 @@ export default function Home() {
     }
   };
 
-  // ── Full Assessment ──────────────────────────────────────────────────────────
+  // ── Full assessment ─────────────────────────────────────────────────────────
   const fetchAssessment = async () => {
-    setAssessmentLoading(true);
-    setAssessmentError(null);
+    setAssessLoading(true); setAssessError(null);
     try {
       const res = await fetch(`${API}/analyze/interview/${FILENAME}`, { method: "POST" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setAssessment(await res.json());
     } catch (e) {
-      setAssessmentError(e instanceof Error ? e.message : "Assessment failed.");
+      setAssessError(e instanceof Error ? e.message : "Assessment failed.");
     } finally {
-      setAssessmentLoading(false);
+      setAssessLoading(false);
     }
   };
 
   const uploaded = uploadStatus === "success";
-  const transcribed = !!transcript;
 
   return (
-    <main style={{ padding: "2rem", fontFamily: "sans-serif", maxWidth: 740 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
-        <h1 style={{ fontSize: "1.15rem", margin: 0 }}>
-          AI-Powered Multimodal Interview Behavioral Analysis System
-        </h1>
-        <a href="/realtime" style={{ fontSize: "0.85rem", color: "#28a745", fontWeight: 600 }}>🎙 Real-Time Mode →</a>
-      </div>
+    <main style={{ padding: "2rem", fontFamily: "sans-serif", maxWidth: 780 }}>
+      <h1 style={{ fontSize: "1.15rem", marginBottom: "0.25rem" }}>
+        AI-Powered Multimodal Interview Behavioral Analysis System
+      </h1>
+      <p style={{ fontSize: "0.8rem", color: "#888", marginBottom: "1.5rem" }}>
+        Professional Interview Assessment Platform
+      </p>
 
       <Controls
         active={active}
@@ -202,15 +195,16 @@ export default function Home() {
             loading={eyeLoading}
             onFetch={fetchEyeContact}
           />
-
-          {transcribed && (
-            <AssessmentPanel
-              result={assessment}
-              loading={assessmentLoading}
-              error={assessmentError}
-              onFetch={fetchAssessment}
-            />
-          )}
+          <AssessmentPanel
+            result={assessment}
+            loading={assessLoading}
+            error={assessError}
+            onFetch={fetchAssessment}
+          />
+          <ReportPanel
+            api={API}
+            filename={FILENAME}
+          />
         </>
       )}
     </main>
