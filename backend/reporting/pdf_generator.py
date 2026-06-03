@@ -11,7 +11,8 @@ from reportlab.platypus import (
 from reportlab.graphics.shapes import Drawing, Rect, String, Line
 from reportlab.graphics import renderPDF
 from reportlab.graphics.charts.barcharts import VerticalBarChart
-from models.report import SessionReport
+from backend.models.report import SessionReport
+
 
 # ── Colour palette ────────────────────────────────────────────────────────────
 C_PRIMARY   = colors.HexColor("#1a1a2e")

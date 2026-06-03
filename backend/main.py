@@ -5,24 +5,26 @@ from fastapi.responses import Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from analyzers.transcriber              import transcribe, get_duration
-from analyzers.face_detector            import analyze as analyze_faces
-from analyzers.eye_contact              import analyze as analyze_eyes
-from analyzers.transcript_analyzer     import analyze as analyze_transcript
-from analyzers.confidence_analyzer     import analyze as analyze_confidence
-from analyzers.communication_score     import analyze as score_communication
-from analyzers.fusion                  import analyze as fuse
-from analyzers.feedback_generator      import generate as generate_feedback
-from analyzers.voice_analyzer          import analyze as analyze_voice
-from analyzers.behavioral.engine       import analyze as analyze_behavior
-from analyzers.interview_coach         import generate_report as generate_coaching
-from analyzers.benchmark               import benchmark
-from history.store                     import save_session, load_session, list_sessions, compare_sessions, new_session_id
-from reporting.pdf_generator           import generate_pdf
-from reporting.routes                  import router as report_router
-from realtime.ws_handler               import handle_ws
+from backend.analyzers.transcriber              import transcribe, get_duration
+from backend.analyzers.face_detector            import analyze as analyze_faces
+from backend.analyzers.eye_contact              import analyze as analyze_eyes
+from backend.analyzers.transcript_analyzer     import analyze as analyze_transcript
+from backend.analyzers.confidence_analyzer     import analyze as analyze_confidence
+from backend.analyzers.communication_score     import analyze as score_communication
+from backend.analyzers.fusion                  import analyze as fuse
+from backend.analyzers.feedback_generator      import generate as generate_feedback
+from backend.analyzers.voice_analyzer          import analyze as analyze_voice
+from backend.analyzers.behavioral.engine       import analyze as analyze_behavior
+from backend.analyzers.interview_coach         import generate_report as generate_coaching
+from backend.analyzers.benchmark               import benchmark
+from backend.history.store                     import save_session, load_session, list_sessions, compare_sessions, new_session_id
+from backend.reporting.pdf_generator           import generate_pdf
+from backend.reporting.routes                  import router as report_router
+from backend.realtime.ws_handler               import handle_ws
 
-from models.schemas import (
+
+from backend.models.schemas import (
+
     TranscriptAnalysisRequest,   TranscriptAnalysisResponse,
     ConfidenceAnalysisRequest,   ConfidenceAnalysisResponse,
     CommunicationScoreRequest,   CommunicationScoreResponse,

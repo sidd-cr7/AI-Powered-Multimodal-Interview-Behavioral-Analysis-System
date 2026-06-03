@@ -6,7 +6,8 @@ LLM enhancement is optional — falls back to rule-based if no provider is confi
 """
 
 import logging
-from analyzers.llm_provider import get_provider
+from backend.analyzers.llm_provider import get_provider
+
 
 log = logging.getLogger("interview_coach")
 

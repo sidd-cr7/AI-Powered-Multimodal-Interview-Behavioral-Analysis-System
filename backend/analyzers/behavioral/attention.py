@@ -4,9 +4,10 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
-from analyzers.behavioral.utils import (
+from backend.analyzers.behavioral.utils import (
     FACE_LANDMARKER_PATH, iter_frames, MIN_FRAMES,
 )
+
 
 _LEFT_IRIS  = [474, 475, 476, 477]
 _RIGHT_IRIS = [469, 470, 471, 472]

@@ -4,9 +4,10 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
-from analyzers.behavioral.utils import (
+from backend.analyzers.behavioral.utils import (
     POSE_LANDMARKER_PATH, ensure_pose_model, iter_frames, MIN_FRAMES,
 )
+
 
 # Shoulder landmark indices in MediaPipe Pose
 _L_SHOULDER = 11

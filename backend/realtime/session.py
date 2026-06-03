@@ -131,6 +131,14 @@ class RealtimeSession:
         self.word_count   = len(text.split())
         self.filler_count = len(_FILLER_PATTERN.findall(text))
 
+    def update_transcript_whisper(self, text: str) -> None:
+        """Update transcript from mid-session Whisper partial — always takes priority."""
+        if not text:
+            return
+        self.transcript   = text
+        self.word_count   = len(text.split())
+        self.filler_count = len(_FILLER_PATTERN.findall(text))
+
     def to_metrics(self) -> dict:
         d    = self.duration_seconds
         mins = int(d) // 60

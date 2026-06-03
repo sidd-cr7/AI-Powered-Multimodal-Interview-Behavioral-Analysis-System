@@ -3,7 +3,8 @@ import json
 import uuid
 import logging
 from datetime import datetime, timezone
-from models.report import SessionReport, ProgressComparison
+from backend.models.report import SessionReport, ProgressComparison
+
 
 log = logging.getLogger("history")
 

@@ -1,5 +1,6 @@
 import logging
-from analyzers.behavioral import head_movement, face_visibility, attention, posture, restlessness
+from backend.analyzers.behavioral import head_movement, face_visibility, attention, posture, restlessness
+
 
 log = logging.getLogger("behavioral")
 

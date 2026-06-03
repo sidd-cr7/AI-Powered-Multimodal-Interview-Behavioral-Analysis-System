@@ -15,8 +15,9 @@ from fastapi import WebSocket, WebSocketDisconnect
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
-from realtime.session import create_session, delete_session
-from realtime.whisper_transcriber import transcribe_session
+from backend.realtime.session import create_session, delete_session
+from backend.realtime.whisper_transcriber import transcribe_chunk, transcribe_session
+
 
 log = logging.getLogger("realtime")
 
@@ -39,8 +40,9 @@ _V_THRESH   = 0.10
 _YAW_THRESH   = 20.0
 _PITCH_THRESH = 20.0
 
-METRIC_INTERVAL  = 0.4   # send metrics every 400 ms
-_executor        = ThreadPoolExecutor(max_workers=3, thread_name_prefix="mediapipe")
+METRIC_INTERVAL   = 0.4   # send metrics every 400ms
+WHISPER_INTERVAL  = 10.0  # run mid-session Whisper every 10s
+_executor         = ThreadPoolExecutor(max_workers=3, thread_name_prefix="mediapipe")
 
 # ── 3-D model points for solvePnP head pose ───────────────────────────────────
 # Canonical face model (mm), indices: nose tip, chin, L eye corner,
@@ -229,10 +231,11 @@ async def handle_ws(websocket: WebSocket, session_id: str) -> None:
 
     face_detector    = _build_face_detector()
     landmarker       = _build_landmarker()
-    frames_received  = 0
-    frames_processed = 0
-    last_metric_send = 0.0
-    loop             = asyncio.get_event_loop()
+    frames_received   = 0
+    frames_processed  = 0
+    last_metric_send  = 0.0
+    last_whisper_time = time.time()
+    loop              = asyncio.get_event_loop()
 
     try:
         while True:
@@ -272,17 +275,41 @@ async def handle_ws(websocket: WebSocket, session_id: str) -> None:
                     payload["frames_processed"] = frames_processed
                     await websocket.send_text(json.dumps({"type": "metrics", "payload": payload}))
 
+                # ── Mid-session Whisper every 15s ─────────────────────────────
+                if now - last_whisper_time >= WHISPER_INTERVAL and session.audio_chunks:
+                    last_whisper_time = now
+                    chunks_snapshot   = list(session.audio_chunks)
+                    prev_text         = session.transcript
+                    try:
+                        result = await loop.run_in_executor(
+                            _executor, transcribe_chunk, chunks_snapshot, prev_text
+                        )
+                        if result["word_count"] > 0:
+                            session.update_transcript_whisper(result["transcript"])
+                            short_text = result["transcript"][:200].replace("\n", " ")
+                            log.info("[WS] Partial Whisper: %d words conf=%d transcript=%s",
+                                     result["word_count"], result["confidence_score"], short_text)
+                            await websocket.send_text(json.dumps({
+                                "type":    "whisper_partial",
+                                "payload": result,
+                            }))
+                    except Exception as e:
+                        log.warning("[WS] Partial Whisper failed: %s", e)
+
             elif kind == "audio_chunk":
                 # Raw audio bytes from MediaRecorder — buffered for Whisper at session end
                 raw_audio = msg.get("data", "")
                 if raw_audio:
+                    log.debug("[WS] audio_chunk received size=%d", len(raw_audio))
                     try:
                         session.add_audio_chunk(base64.b64decode(raw_audio))
                     except Exception:
                         pass
 
             elif kind == "transcript":
-                session.update_transcript(msg.get("text", ""))
+                text = msg.get("text", "")
+                session.update_transcript(text)
+                log.debug("[WS] transcript update len=%d words=%d", len(text), len(text.split()))
 
             elif kind == "end_session":
                 # Frontend signals session is ending — run Whisper now

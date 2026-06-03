@@ -7,23 +7,25 @@ import logging
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from analyzers.transcriber          import transcribe, get_duration
-from analyzers.face_detector        import analyze as analyze_faces
-from analyzers.eye_contact          import analyze as analyze_eyes
-from analyzers.transcript_analyzer  import analyze as analyze_transcript
-from analyzers.confidence_analyzer  import analyze as analyze_confidence
-from analyzers.communication_score  import analyze as score_communication
-from analyzers.fusion               import analyze as fuse
-from analyzers.voice_analyzer       import analyze as analyze_voice
-from analyzers.behavioral.engine    import analyze as analyze_behavior
-from analyzers.interview_coach      import generate_report as generate_coaching
-from analyzers.benchmark            import benchmark
-from history.store                  import (
+from backend.analyzers.transcriber          import transcribe, get_duration
+from backend.analyzers.face_detector        import analyze as analyze_faces
+from backend.analyzers.eye_contact          import analyze as analyze_eyes
+from backend.analyzers.transcript_analyzer  import analyze as analyze_transcript
+from backend.analyzers.confidence_analyzer  import analyze as analyze_confidence
+from backend.analyzers.communication_score  import analyze as score_communication
+from backend.analyzers.fusion               import analyze as fuse
+from backend.analyzers.voice_analyzer       import analyze as analyze_voice
+from backend.analyzers.behavioral.engine    import analyze as analyze_behavior
+from backend.analyzers.interview_coach      import generate_report as generate_coaching
+from backend.analyzers.benchmark            import benchmark
+
+from backend.history.store                  import (
     save_session, load_session, list_sessions,
     compare_sessions, new_session_id,
 )
-from reporting.pdf_generator        import generate_pdf
-from models.report                  import SessionReport, ReportMetrics
+from backend.reporting.pdf_generator        import generate_pdf
+from backend.models.report                  import SessionReport, ReportMetrics
+
 
 log = logging.getLogger("report_router")
 
