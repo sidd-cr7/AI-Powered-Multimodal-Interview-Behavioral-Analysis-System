@@ -6,7 +6,7 @@ import RealtimeDashboard from "../components/RealtimeDashboard";
 const WS_BASE      = "ws://localhost:8000/ws/realtime";
 const FPS          = 3;    // 3fps — backend MediaPipe needs ~300ms per frame
 const RECONNECT_MS = 3000;
-const MAX_RETRIES  = 5;
+const MAX_RETRIES  = 999;  // effectively infinite for long sessions
 
 type Metrics = {
   face_detected:          boolean;
@@ -89,7 +89,10 @@ export default function RealtimePage() {
       if (e.error !== "no-speech") console.warn("Speech error:", e.error);
     };
     rec.onend = () => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) rec.start();
+      if (activeRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+        try { setTimeout(() => { if (activeRef.current) rec.start(); }, 100); }
+        catch { /* already stopped */ }
+      }
     };
     rec.start();
     speechRef.current = rec;
@@ -111,11 +114,12 @@ export default function RealtimePage() {
       setError(null);
       frameTimer.current = setInterval(sendFrame, 1000 / FPS);
       startSpeech();
-      // keepalive ping every 20s
-      const ping = setInterval(() => {
+      // keepalive ping every 20s (store ref for cleanup)
+      const pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
-        else clearInterval(ping);
+        else clearInterval(pingInterval);
       }, 20_000);
+      ws.addEventListener('close', () => clearInterval(pingInterval), { once: true });
     };
 
     ws.onmessage = (e) => {

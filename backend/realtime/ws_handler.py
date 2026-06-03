@@ -98,7 +98,7 @@ def _process_frame_sync(frame: np.ndarray, face_detector, landmarker) -> tuple[b
 
     land_result = landmarker.detect(mp_image)
     if land_result.face_landmarks:
-        gaze = _gaze_from_landmarks(land_result.face_landmarks[0].landmark)
+        gaze = _gaze_from_landmarks(land_result.face_landmarks[0])
     else:
         gaze = "unknown"
 
@@ -134,11 +134,15 @@ async def handle_ws(websocket: WebSocket, session_id: str) -> None:
                     continue
 
                 # ── Run MediaPipe in thread pool — never blocks event loop ────
-                detected, count, gaze = await loop.run_in_executor(
-                    _executor,
-                    _process_frame_sync,
-                    frame, face_detector, landmarker,
-                )
+                try:
+                    detected, count, gaze = await loop.run_in_executor(
+                        _executor,
+                        _process_frame_sync,
+                        frame, face_detector, landmarker,
+                    )
+                except Exception as e:
+                    log.warning("[WS] Frame processing error (skipping): %s", e)
+                    continue
                 frames_processed += 1
 
                 session.face_detected = detected
