@@ -16,7 +16,7 @@ type Metrics = {
   frames_processed?:      number;
 };
 
-type Props = { metrics: Metrics | null; connected: boolean };
+type Props = { metrics: Metrics | null; connected: boolean; liveTranscript?: string };
 
 const GAZE_COLOR: Record<string, string> = {
   CENTER:  "#28a745",
@@ -26,7 +26,7 @@ const GAZE_COLOR: Record<string, string> = {
   UNKNOWN: "#aaa",
 };
 
-export default function RealtimeDashboard({ metrics, connected }: Props) {
+export default function RealtimeDashboard({ metrics, connected, liveTranscript }: Props) {
   const m = metrics;
 
   return (
@@ -88,8 +88,8 @@ export default function RealtimeDashboard({ metrics, connected }: Props) {
         <p style={{ fontSize: "0.75rem", color: "#888", marginBottom: "0.4rem", fontWeight: 600 }}>
           LIVE TRANSCRIPT
         </p>
-        <p style={{ fontSize: "0.9rem", lineHeight: 1.6, minHeight: 48, color: m?.transcript ? "#111" : "#bbb" }}>
-          {m?.transcript || "Start speaking — transcript will appear here…"}
+        <p style={{ fontSize: "0.9rem", lineHeight: 1.6, minHeight: 48, color: liveTranscript ? "#111" : "#bbb" }}>
+          {liveTranscript || "Start speaking — transcript will appear here…"}
         </p>
       </div>
     </div>

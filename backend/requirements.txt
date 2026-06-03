@@ -5,6 +5,7 @@ httptools>=0.6.3
 python-multipart>=0.0.9
 pydantic>=2.7.0
 openai-whisper>=20231117
+faster-whisper>=1.0.0
 opencv-python-headless>=4.9.0
 mediapipe>=0.10.14
 librosa>=0.10.2

@@ -40,10 +40,21 @@ class RealtimeSession:
     # Eye-contact history: confidence-weighted
     _ec_history:   deque = field(default_factory=lambda: deque(maxlen=_HISTORY_LEN))
 
-    # Speech metrics
+    # Speech metrics — live (Web Speech API)
     transcript:    str   = ""
     word_count:    int   = 0
     filler_count:  int   = 0
+
+    # Audio recording — for Faster-Whisper at session end
+    _audio_chunks: list  = field(default_factory=list)
+
+    # Final Whisper transcript (set at session end)
+    whisper_transcript:    str   = ""
+    whisper_word_count:    int   = 0
+    whisper_wpm:           float = 0.0
+    whisper_confidence:    int   = 0
+    whisper_quality:       str   = ""
+    whisper_ready:         bool  = False
 
     def update_gaze(self, gaze: str, confidence: float) -> None:
         """
@@ -93,7 +104,29 @@ class RealtimeSession:
             return 0.0
         return round(self.word_count / mins, 1)
 
+    def add_audio_chunk(self, chunk: bytes) -> None:
+        self._audio_chunks.append(chunk)
+
+    @property
+    def audio_chunks(self) -> list[bytes]:
+        return self._audio_chunks
+
+    def set_whisper_result(self, result: dict) -> None:
+        self.whisper_transcript = result.get("transcript", "")
+        self.whisper_word_count = result.get("word_count", 0)
+        self.whisper_wpm        = result.get("speaking_rate_wpm", 0.0)
+        self.whisper_confidence = result.get("confidence_score", 0)
+        self.whisper_quality    = result.get("transcript_quality", "")
+        self.whisper_ready      = True
+        # Update live metrics with the better transcript
+        self.transcript   = self.whisper_transcript
+        self.word_count   = self.whisper_word_count
+        self.filler_count = len(_FILLER_PATTERN.findall(self.whisper_transcript))
+
     def update_transcript(self, text: str) -> None:
+        # Only update from Web Speech API if Whisper hasn't produced a result yet
+        if self.whisper_ready:
+            return
         self.transcript   = text
         self.word_count   = len(text.split())
         self.filler_count = len(_FILLER_PATTERN.findall(text))
@@ -117,7 +150,11 @@ class RealtimeSession:
             "current_wpm":    self.current_wpm,
             "filler_words":   self.filler_count,
             "session_duration": f"{mins:02d}:{secs:02d}",
-            "transcript":     self.transcript,
+            "transcript":         self.transcript,
+            "whisper_ready":       self.whisper_ready,
+            "whisper_transcript":  self.whisper_transcript if self.whisper_ready else None,
+            "whisper_confidence":  self.whisper_confidence if self.whisper_ready else None,
+            "whisper_quality":     self.whisper_quality    if self.whisper_ready else None,
         }
 
 

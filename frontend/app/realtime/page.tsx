@@ -4,9 +4,9 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import RealtimeDashboard from "../components/RealtimeDashboard";
 
 const WS_BASE      = "ws://localhost:8000/ws/realtime";
-const FPS          = 3;    // 3fps — backend MediaPipe needs ~300ms per frame
+const FPS          = 3;
 const RECONNECT_MS = 3000;
-const MAX_RETRIES  = 999;  // effectively infinite for long sessions
+const MAX_RETRIES  = 999;
 
 type Metrics = {
   face_detected:          boolean;
@@ -20,32 +20,42 @@ type Metrics = {
   filler_words:           number;
   session_duration:       string;
   transcript:             string;
+  whisper_ready:          boolean;
+  whisper_transcript:     string | null;
+  whisper_confidence:     number | null;
+  whisper_quality:        string | null;
   frames_received?:       number;
   frames_processed?:      number;
 };
 
+type WhisperResult = { transcript: string; quality: string; confidence: number };
 type ConnState = "idle" | "connecting" | "connected" | "reconnecting" | "failed" | "stopped";
 
 export default function RealtimePage() {
-  const videoRef    = useRef<HTMLVideoElement>(null);
-  const canvasRef   = useRef<HTMLCanvasElement>(null);
-  const wsRef       = useRef<WebSocket | null>(null);
-  const frameTimer  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const videoRef       = useRef<HTMLVideoElement>(null);
+  const canvasRef      = useRef<HTMLCanvasElement>(null);
+  const wsRef          = useRef<WebSocket | null>(null);
+  const frameTimer     = useRef<ReturnType<typeof setInterval> | null>(null);
   const speechRef      = useRef<SpeechRecognition | null>(null);
-  const finalTextRef    = useRef("");        // persists across speech API restarts
-  const streamRef   = useRef<MediaStream | null>(null);
-  const retriesRef  = useRef(0);
-  const sessionId   = useRef(`rt_${Date.now()}`);
-  const activeRef   = useRef(false);   // track inside callbacks without stale closure
+  const finalTextRef   = useRef("");
+  const sendTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioRecRef    = useRef<MediaRecorder | null>(null);
+  const streamRef      = useRef<MediaStream | null>(null);
+  const retriesRef     = useRef(0);
+  const sessionId      = useRef(`rt_${Date.now()}`);
+  const activeRef      = useRef(false);
 
-  const [active,      setActive]     = useState(false);
-  const [connState,   setConnState]  = useState<ConnState>("idle");
-  const [metrics,     setMetrics]    = useState<Metrics | null>(null);
-  const [error,       setError]      = useState<string | null>(null);
-  const [frameCount,  setFrameCount] = useState(0);
-  const [closeInfo,   setCloseInfo]  = useState<string | null>(null);
+  const [active,         setActive]        = useState(false);
+  const [connState,      setConnState]     = useState<ConnState>("idle");
+  const [metrics,        setMetrics]       = useState<Metrics | null>(null);
+  const [liveTranscript, setLiveTranscript]= useState("");
+  const [whisperResult,  setWhisperResult] = useState<WhisperResult | null>(null);
+  const [whisperPending, setWhisperPending]= useState(false);
+  const [error,          setError]         = useState<string | null>(null);
+  const [frameCount,     setFrameCount]    = useState(0);
+  const [closeInfo,      setCloseInfo]     = useState<string | null>(null);
 
-  // ── Attach stream to video element after it mounts ────────────────────────
+  // ── Attach stream to video element ────────────────────────────────────────
   useEffect(() => {
     if (active && videoRef.current && streamRef.current) {
       videoRef.current.srcObject = streamRef.current;
@@ -58,7 +68,7 @@ export default function RealtimePage() {
     const video  = videoRef.current;
     const canvas = canvasRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN || !video || !canvas) return;
-    if (video.readyState < 2) return;   // video not ready yet
+    if (video.readyState < 2) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -70,7 +80,7 @@ export default function RealtimePage() {
     setFrameCount(n => n + 1);
   }, []);
 
-  // ── Web Speech API ────────────────────────────────────────────────────────
+  // ── Web Speech API (live display only) ───────────────────────────────────
   const startSpeech = useCallback(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) { console.warn("Web Speech API not available"); return; }
@@ -87,25 +97,29 @@ export default function RealtimePage() {
         if (e.results[i].isFinal) finalTextRef.current += t + " ";
         else interim = t;
       }
-      const full = (finalTextRef.current + interim).trim();
-      wsRef.current?.send(JSON.stringify({ type: "transcript", text: full }));
+      // Update live display immediately
+      setLiveTranscript((finalTextRef.current + interim).trim());
+
+      // Debounce backend sync — max 2/sec (only final text, not interim)
+      if (sendTimerRef.current) clearTimeout(sendTimerRef.current);
+      sendTimerRef.current = setTimeout(() => {
+        wsRef.current?.send(JSON.stringify({
+          type: "transcript",
+          text: finalTextRef.current.trim(),
+        }));
+      }, 500);
     };
 
     rec.onerror = (e: SpeechRecognitionErrorEvent) => {
-      // "network" and "no-speech" are transient — browser will fire onend and we restart
       if (e.error !== "no-speech" && e.error !== "network")
         console.warn("Speech error:", e.error);
     };
 
     rec.onend = () => {
-      // Always restart while session is active — decoupled from WS state
       if (!activeRef.current) return;
       setTimeout(() => {
         if (!activeRef.current) return;
-        try {
-          const r = speechRef.current;
-          if (r) r.start();
-        } catch { /* already running */ }
+        try { speechRef.current?.start(); } catch { /* already running */ }
       }, 200);
     };
 
@@ -113,67 +127,107 @@ export default function RealtimePage() {
     speechRef.current = rec;
   }, []);
 
-  // ── Open WebSocket (called on start + each reconnect) ─────────────────────
+  // ── Audio recorder — 4-second chunks sent to backend for Whisper ─────────
+  const startAudioRecorder = useCallback((stream: MediaStream) => {
+    const audioStream = new MediaStream(stream.getAudioTracks());
+
+    // Prefer opus; fall back to whatever the browser supports
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "audio/webm";
+
+    const recorder = new MediaRecorder(audioStream, { mimeType });
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size < 100 || wsRef.current?.readyState !== WebSocket.OPEN) return;
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const b64 = (reader.result as string).split(",")[1];
+        wsRef.current?.send(JSON.stringify({ type: "audio_chunk", data: b64 }));
+      };
+      reader.readAsDataURL(e.data);
+    };
+
+    recorder.start(4000); // 4-second timeslice
+    audioRecRef.current = recorder;
+  }, []);
+
+  const stopAudioRecorder = useCallback(() => {
+    const rec = audioRecRef.current;
+    if (!rec) return;
+    if (rec.state === "recording") {
+      rec.requestData(); // flush final partial chunk
+      rec.stop();
+    }
+    audioRecRef.current = null;
+  }, []);
+
+  // ── Open WebSocket ────────────────────────────────────────────────────────
   const openWS = useCallback(() => {
     if (!activeRef.current) return;
 
     const ws = new WebSocket(`${WS_BASE}/${sessionId.current}`);
     wsRef.current = ws;
     setConnState("connecting");
-    console.log("[WS] Connecting to", `${WS_BASE}/${sessionId.current}`);
 
     ws.onopen = () => {
-      console.log("[WS] Connected");
       retriesRef.current = 0;
       setConnState("connected");
       setError(null);
       frameTimer.current = setInterval(sendFrame, 1000 / FPS);
       startSpeech();
-      // keepalive ping every 20s (store ref for cleanup)
+      startAudioRecorder(streamRef.current!);
       const pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
         else clearInterval(pingInterval);
       }, 20_000);
-      ws.addEventListener('close', () => clearInterval(pingInterval), { once: true });
+      ws.addEventListener("close", () => clearInterval(pingInterval), { once: true });
     };
 
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === "metrics") setMetrics(msg.payload);
+        if (msg.type === "whisper_result") {
+          setWhisperResult({
+            transcript: msg.payload.transcript,
+            quality:    msg.payload.transcript_quality,
+            confidence: msg.payload.confidence_score,
+          });
+          setWhisperPending(false);
+        }
       } catch { /* ignore malformed */ }
     };
 
-    ws.onerror = (e) => {
-      console.error("[WS] Error event", e);
-    };
+    ws.onerror = () => { /* onclose will handle reconnect */ };
 
     ws.onclose = (e) => {
       const info = `code=${e.code} reason=${e.reason || "none"} clean=${e.wasClean}`;
-      console.log("[WS] Closed —", info);
       setCloseInfo(info);
       if (frameTimer.current) { clearInterval(frameTimer.current); frameTimer.current = null; }
-
       if (!activeRef.current) { setConnState("stopped"); return; }
 
       setConnState("reconnecting");
       if (retriesRef.current < MAX_RETRIES) {
         retriesRef.current++;
-        console.log(`[WS] Reconnect ${retriesRef.current}/${MAX_RETRIES} in ${RECONNECT_MS}ms`);
         setTimeout(openWS, RECONNECT_MS);
       } else {
         setConnState("failed");
         setError(`WebSocket failed after ${MAX_RETRIES} attempts. Last close: ${info}`);
       }
     };
-  }, [sendFrame, startSpeech]);
+  }, [sendFrame, startSpeech, startAudioRecorder]);
 
   // ── Start session ─────────────────────────────────────────────────────────
   const start = async () => {
     setError(null);
     setFrameCount(0);
-    retriesRef.current = 0;
-    sessionId.current  = `rt_${Date.now()}`;
+    setWhisperResult(null);
+    setWhisperPending(false);
+    setLiveTranscript("");
+    finalTextRef.current = "";
+    retriesRef.current   = 0;
+    sessionId.current    = `rt_${Date.now()}`;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
@@ -188,10 +242,23 @@ export default function RealtimePage() {
   // ── Stop session ──────────────────────────────────────────────────────────
   const stop = () => {
     activeRef.current = false;
-    if (frameTimer.current) { clearInterval(frameTimer.current); frameTimer.current = null; }
-    if (speechRef.current)  { speechRef.current.stop(); speechRef.current = null; }
+    if (sendTimerRef.current)  { clearTimeout(sendTimerRef.current);  sendTimerRef.current = null; }
+    if (frameTimer.current)    { clearInterval(frameTimer.current);   frameTimer.current = null; }
+    if (speechRef.current)     { speechRef.current.stop();            speechRef.current = null; }
     finalTextRef.current = "";
-    if (wsRef.current)      { wsRef.current.close(1000, "user stopped"); wsRef.current = null; }
+
+    // Signal backend to run Whisper, then close after brief delay
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "end_session" }));
+      setWhisperPending(true);
+    }
+    stopAudioRecorder();
+
+    setTimeout(() => {
+      wsRef.current?.close(1000, "user stopped");
+      wsRef.current = null;
+    }, 800);
+
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     setActive(false);
@@ -202,12 +269,8 @@ export default function RealtimePage() {
   useEffect(() => () => stop(), []);
 
   const stateLabel: Record<ConnState, string> = {
-    idle:         "● Idle",
-    connecting:   "◌ Connecting…",
-    connected:    "● LIVE",
-    reconnecting: "◌ Reconnecting…",
-    failed:       "✖ Connection Failed",
-    stopped:      "■ Stopped",
+    idle: "● Idle", connecting: "◌ Connecting…", connected: "● LIVE",
+    reconnecting: "◌ Reconnecting…", failed: "✖ Connection Failed", stopped: "■ Stopped",
   };
   const stateColor: Record<ConnState, string> = {
     idle: "#888", connecting: "#fd7e14", connected: "#28a745",
@@ -234,9 +297,7 @@ export default function RealtimePage() {
           {stateLabel[connState]}
         </span>
         {connState === "connected" && (
-          <span style={{ fontSize: "0.75rem", color: "#888" }}>
-            {frameCount} frames sent
-          </span>
+          <span style={{ fontSize: "0.75rem", color: "#888" }}>{frameCount} frames sent</span>
         )}
       </div>
 
@@ -249,8 +310,11 @@ export default function RealtimePage() {
           </div>
         </div>
       )}
+
       {closeInfo && connState === "reconnecting" && (
-        <div style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "#888", fontFamily: "monospace" }}>Last close: {closeInfo}</div>
+        <div style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "#888", fontFamily: "monospace" }}>
+          Last close: {closeInfo}
+        </div>
       )}
 
       {/* Video + hidden canvas */}
@@ -263,7 +327,35 @@ export default function RealtimePage() {
       <canvas ref={canvasRef} style={{ display: "none" }} />
 
       {/* Live dashboard */}
-      {active && <RealtimeDashboard metrics={metrics} connected={connState === "connected"} />}
+      {active && (
+        <RealtimeDashboard
+          metrics={metrics}
+          liveTranscript={liveTranscript}
+          connected={connState === "connected"}
+        />
+      )}
+
+      {/* Whisper processing indicator */}
+      {whisperPending && !whisperResult && (
+        <div style={{ marginTop: "1.5rem", color: "#fd7e14", fontSize: "0.9rem" }}>
+          ⏳ Processing high-quality transcript with Faster-Whisper…
+        </div>
+      )}
+
+      {/* Whisper final transcript — shown after session ends */}
+      {!active && whisperResult && (
+        <section style={{ marginTop: "1.5rem", borderTop: "1px solid #eee", paddingTop: "1.25rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
+            <span style={{ fontSize: "1rem" }}>🎯 Final Transcript</span>
+            <span style={{ fontSize: "0.75rem", background: "#d4edda", color: "#155724", borderRadius: 4, padding: "0.2rem 0.5rem" }}>
+              Faster-Whisper · {whisperResult.quality} · {whisperResult.confidence}% confidence
+            </span>
+          </div>
+          <div style={{ background: "#f4f4f4", borderRadius: 8, padding: "1rem", fontSize: "0.95rem", lineHeight: 1.7 }}>
+            {whisperResult.transcript || <em style={{ color: "#aaa" }}>No speech detected.</em>}
+          </div>
+        </section>
+      )}
 
       {!active && connState === "idle" && (
         <p style={{ marginTop: "1.5rem", color: "#888", fontSize: "0.9rem" }}>

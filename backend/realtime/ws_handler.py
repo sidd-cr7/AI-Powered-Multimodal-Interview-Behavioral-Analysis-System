@@ -16,6 +16,7 @@ from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
 from realtime.session import create_session, delete_session
+from realtime.whisper_transcriber import transcribe_session
 
 log = logging.getLogger("realtime")
 
@@ -38,8 +39,8 @@ _V_THRESH   = 0.10
 _YAW_THRESH   = 20.0
 _PITCH_THRESH = 20.0
 
-METRIC_INTERVAL = 0.4   # send metrics every 400 ms
-_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="mediapipe")
+METRIC_INTERVAL  = 0.4   # send metrics every 400 ms
+_executor        = ThreadPoolExecutor(max_workers=3, thread_name_prefix="mediapipe")
 
 # ── 3-D model points for solvePnP head pose ───────────────────────────────────
 # Canonical face model (mm), indices: nose tip, chin, L eye corner,
@@ -268,8 +269,36 @@ async def handle_ws(websocket: WebSocket, session_id: str) -> None:
                     payload["frames_processed"] = frames_processed
                     await websocket.send_text(json.dumps({"type": "metrics", "payload": payload}))
 
+            elif kind == "audio_chunk":
+                # Raw audio bytes from MediaRecorder — buffered for Whisper at session end
+                raw_audio = msg.get("data", "")
+                if raw_audio:
+                    try:
+                        session.add_audio_chunk(base64.b64decode(raw_audio))
+                    except Exception:
+                        pass
+
             elif kind == "transcript":
                 session.update_transcript(msg.get("text", ""))
+
+            elif kind == "end_session":
+                # Frontend signals session is ending — run Whisper now
+                log.info("[WS] end_session received, running Whisper on %d chunks",
+                         len(session.audio_chunks))
+                if session.audio_chunks:
+                    try:
+                        result = await loop.run_in_executor(
+                            _executor, transcribe_session, session.audio_chunks
+                        )
+                        session.set_whisper_result(result)
+                        log.info("[WS] Whisper done: %d words, quality=%s",
+                                 result["word_count"], result["transcript_quality"])
+                        await websocket.send_text(json.dumps({
+                            "type":    "whisper_result",
+                            "payload": result,
+                        }))
+                    except Exception as e:
+                        log.error("[WS] Whisper failed: %s", e)
 
             elif kind == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
