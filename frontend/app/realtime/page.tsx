@@ -125,7 +125,7 @@ export default function RealtimePage() {
       if (!activeRef.current) return;
       setTimeout(() => {
         if (!activeRef.current) return;
-        try { speechRef.current?.start(); } catch { /* already running */ }
+        try { rec.start(); } catch { /* already running */ }
       }, 200);
     };
 
@@ -145,16 +145,17 @@ export default function RealtimePage() {
     const recorder = new MediaRecorder(audioStream, { mimeType });
 
     recorder.ondataavailable = (e) => {
-      if (e.data.size < 100 || wsRef.current?.readyState !== WebSocket.OPEN) return;
+      // Keep even small chunks — the first chunk contains the WebM header
+      if (e.data.size < 10 || wsRef.current?.readyState !== WebSocket.OPEN) return;
       const reader = new FileReader();
       reader.onloadend = () => {
         const b64 = (reader.result as string).split(",")[1];
-        wsRef.current?.send(JSON.stringify({ type: "audio_chunk", data: b64 }));
+        if (b64) wsRef.current?.send(JSON.stringify({ type: "audio_chunk", data: b64 }));
       };
       reader.readAsDataURL(e.data);
     };
 
-    recorder.start(4000); // 4-second timeslice
+    recorder.start(3000); // 3-second timeslice
     audioRecRef.current = recorder;
   }, []);
 

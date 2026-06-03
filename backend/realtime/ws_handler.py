@@ -209,11 +209,14 @@ def _process_frame_sync(
     count       = len(detections)
 
     land_result = landmarker.detect(mp_img)
-    if land_result.face_landmarks:
-        lm   = land_result.face_landmarks[0]
-        gaze, conf, yaw, pitch, roll = _combined_gaze(lm, h, w)
+    if land_result.face_landmarks and len(land_result.face_landmarks) > 0:
+        lm = list(land_result.face_landmarks[0])   # works for both list and NormalizedLandmarkList
+        if len(lm) > max(_LEFT_IRIS + _RIGHT_IRIS + _LEFT_EYE + _RIGHT_EYE + _LEFT_TB):
+            gaze, conf, yaw, pitch, roll = _combined_gaze(lm, h, w)
+        else:
+            gaze, conf, yaw, pitch, roll = "unknown", 0.0, 0.0, 0.0, 0.0
     else:
-        gaze, conf, yaw, pitch, roll = "tracking_lost", 0.0, 0.0, 0.0, 0.0
+        gaze, conf, yaw, pitch, roll = "unknown", 0.0, 0.0, 0.0, 0.0
 
     return detected, count, gaze, conf, yaw, pitch, roll
 
