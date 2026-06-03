@@ -51,8 +51,10 @@ export default function RealtimePage() {
   const [active,         setActive]         = useState(false);
   const [connState,      setConnState]      = useState<ConnState>("idle");
   const [metrics,        setMetrics]        = useState<Metrics | null>(null);
-  const [liveTranscript, setLiveTranscript] = useState("");
-  const [whisperResult,  setWhisperResult]  = useState<WhisperResult | null>(null);
+  const [liveTranscript,   setLiveTranscript]   = useState("");
+  const [transcriptSource, setTranscriptSource] = useState<"speech"|"whisper">("speech");
+  const [transcriptConf,   setTranscriptConf]   = useState<number|null>(null);
+  const [whisperResult,    setWhisperResult]     = useState<WhisperResult | null>(null);
   const [whisperPending, setWhisperPending] = useState(false);
   const [assessment,     setAssessment]     = useState<AssessmentResult | null>(null);
   const [assessLoading,  setAssessLoading]  = useState(false);
@@ -99,23 +101,49 @@ export default function RealtimePage() {
     rec.lang           = "en-US";
     speechRef.current  = rec;  // assign BEFORE start
 
+    rec.onstart = () => {
+      console.log("[Speech] recognition started");
+    };
+
+    rec.onaudiostart = () => {
+      console.log("[Speech] audio capture started");
+    };
+
+    rec.onspeechstart = () => {
+      console.log("[Speech] speech start");
+    };
+
+    rec.onspeechend = () => {
+      console.log("[Speech] speech end");
+    };
+
     rec.onresult = (e: SpeechRecognitionEvent) => {
       let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) finalTextRef.current += t + " ";
-        else interim = t;
+        const result = e.results[i];
+        const t = result[0].transcript.trim();
+        const confidence = result[0].confidence ?? 0;
+        if (result.isFinal) {
+          if (t) finalTextRef.current = `${finalTextRef.current}${t} `;
+          console.log("[Speech] final result", { index: i, transcript: t, confidence });
+        } else {
+          interim = t;
+          console.log("[Speech] interim result", { index: i, transcript: t, confidence });
+        }
       }
       const combined = (finalTextRef.current + interim).trim();
       setLiveTranscript(combined);
+      console.log("[Speech] transcript update", { transcript: combined });
 
       if (sendTimerRef.current) clearTimeout(sendTimerRef.current);
       sendTimerRef.current = setTimeout(() => {
-        wsRef.current?.send(JSON.stringify({
-          type: "transcript",
-          text: finalTextRef.current.trim(),
-        }));
-      }, 400);
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({
+            type: "transcript",
+            text: combined,
+          }));
+        }
+      }, 300);
     };
 
     rec.onerror = (e: SpeechRecognitionErrorEvent) => {
@@ -127,6 +155,7 @@ export default function RealtimePage() {
     };
 
     rec.onend = () => {
+      console.log("[Speech] recognition ended");
       if (!activeRef.current) return;
       // Must delay — browser throws if start() called synchronously in onend
       setTimeout(() => {
@@ -205,6 +234,19 @@ export default function RealtimePage() {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === "metrics") setMetrics(msg.payload);
+        if (msg.type === "whisper_partial") {
+          // Mid-session Whisper correction — replaces low-accuracy Web Speech text
+          const t: string = msg.payload.transcript;
+          const c: number = msg.payload.confidence_score;
+          console.log("[WS] whisper_partial received", { transcript: t, confidence: c });
+          if (t) {
+            const trimmed = t.trim();
+            setLiveTranscript(trimmed);
+            setTranscriptSource("whisper");
+            setTranscriptConf(c);
+            finalTextRef.current = `${trimmed} `;
+          }
+        }
         if (msg.type === "whisper_result") {
           const wr: WhisperResult = {
             transcript: msg.payload.transcript,
@@ -212,6 +254,7 @@ export default function RealtimePage() {
             confidence: msg.payload.confidence_score,
             duration:   msg.payload.duration_seconds,
           };
+          console.log("[WS] whisper_result received", { quality: msg.payload.transcript_quality, confidence: msg.payload.confidence_score });
           setWhisperResult(wr);
           setWhisperPending(false);
           generateAssessment(wr);
@@ -355,7 +398,13 @@ export default function RealtimePage() {
       <canvas ref={canvasRef} style={{ display: "none" }} />
 
       {active && (
-        <RealtimeDashboard metrics={metrics} liveTranscript={liveTranscript} connected={connState === "connected"} />
+        <RealtimeDashboard
+          metrics={metrics}
+          liveTranscript={liveTranscript}
+          transcriptSource={transcriptSource}
+          transcriptConf={transcriptConf}
+          connected={connState === "connected"}
+        />
       )}
 
       {whisperPending && !whisperResult && (

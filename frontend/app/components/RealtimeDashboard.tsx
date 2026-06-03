@@ -83,14 +83,27 @@ export default function RealtimeDashboard({ metrics, connected, liveTranscript }
         </div>
       )}
 
-      {/* Live transcript */}
+          {/* Live transcript */}
       <div style={transcriptBox}>
         <p style={{ fontSize: "0.75rem", color: "#888", marginBottom: "0.4rem", fontWeight: 600 }}>
           LIVE TRANSCRIPT
         </p>
-        <p style={{ fontSize: "0.9rem", lineHeight: 1.6, minHeight: 48, color: liveTranscript ? "#111" : "#bbb" }}>
-          {liveTranscript || "Start speaking — transcript will appear here…"}
-        </p>
+        {liveTranscript ? (
+          <div style={subtitleContainer}>
+            {liveTranscript.trim().split(/\s+/).map((word, index, words) => {
+              const isLast = index === words.length - 1;
+              return (
+                <span key={`${word}-${index}`} style={isLast ? subtitleWordLatest : subtitleWord}>
+                  {word}{index < words.length - 1 ? " " : ""}
+                </span>
+              );
+            })}
+          </div>
+        ) : (
+          <p style={{ fontSize: "0.9rem", lineHeight: 1.6, minHeight: 48, color: "#bbb" }}>
+            Start speaking — transcript will appear here…
+          </p>
+        )}
       </div>
     </div>
   );
@@ -123,4 +136,26 @@ const transcriptBox: React.CSSProperties = {
   background: "#f4f4f4",
   borderRadius: 10,
   padding: "1rem",
+};
+const subtitleContainer: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "0.25rem",
+  fontSize: "0.9rem",
+  lineHeight: 1.6,
+  minHeight: 48,
+  color: "#111",
+};
+const subtitleWord: React.CSSProperties = {
+  display: "inline-block",
+  marginBottom: "0.2rem",
+};
+const subtitleWordLatest: React.CSSProperties = {
+  display: "inline-block",
+  marginBottom: "0.2rem",
+  fontWeight: 700,
+  color: "#1a1a1a",
+  background: "rgba(40, 167, 69, 0.08)",
+  padding: "0.08rem 0.3rem",
+  borderRadius: 4,
 };
