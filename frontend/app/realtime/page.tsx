@@ -2,8 +2,11 @@
 
 import { useRef, useEffect, useState, useCallback } from "react";
 import RealtimeDashboard from "../components/RealtimeDashboard";
+import AssessmentPanel from "../components/AssessmentPanel";
+import { AssessmentResult } from "../types/analysis";
 
-const WS_BASE      = "ws://localhost:8000/ws/realtime";
+const WS_BASE  = "ws://localhost:8000/ws/realtime";
+const API_BASE = "http://localhost:8000";
 const FPS          = 3;
 const RECONNECT_MS = 3000;
 const MAX_RETRIES  = 999;
@@ -28,7 +31,7 @@ type Metrics = {
   frames_processed?:      number;
 };
 
-type WhisperResult = { transcript: string; quality: string; confidence: number };
+type WhisperResult = { transcript: string; quality: string; confidence: number; duration: number };
 type ConnState = "idle" | "connecting" | "connected" | "reconnecting" | "failed" | "stopped";
 
 export default function RealtimePage() {
@@ -51,6 +54,9 @@ export default function RealtimePage() {
   const [liveTranscript, setLiveTranscript]= useState("");
   const [whisperResult,  setWhisperResult] = useState<WhisperResult | null>(null);
   const [whisperPending, setWhisperPending]= useState(false);
+  const [assessment,     setAssessment]    = useState<AssessmentResult | null>(null);
+  const [assessLoading,  setAssessLoading] = useState(false);
+  const [assessError,    setAssessError]   = useState<string | null>(null);
   const [error,          setError]         = useState<string | null>(null);
   const [frameCount,     setFrameCount]    = useState(0);
   const [closeInfo,      setCloseInfo]     = useState<string | null>(null);
@@ -189,12 +195,16 @@ export default function RealtimePage() {
         const msg = JSON.parse(e.data);
         if (msg.type === "metrics") setMetrics(msg.payload);
         if (msg.type === "whisper_result") {
-          setWhisperResult({
+          const wr = {
             transcript: msg.payload.transcript,
             quality:    msg.payload.transcript_quality,
             confidence: msg.payload.confidence_score,
-          });
+            duration:   msg.payload.duration_seconds,
+          };
+          setWhisperResult(wr);
           setWhisperPending(false);
+          // Auto-trigger assessment once Whisper result arrives
+          generateAssessment(wr);
         }
       } catch { /* ignore malformed */ }
     };
@@ -223,6 +233,8 @@ export default function RealtimePage() {
     setError(null);
     setFrameCount(0);
     setWhisperResult(null);
+    setAssessment(null);
+    setAssessError(null);
     setWhisperPending(false);
     setLiveTranscript("");
     finalTextRef.current = "";
@@ -264,6 +276,31 @@ export default function RealtimePage() {
     setActive(false);
     setConnState("stopped");
     setMetrics(null);
+  };
+
+  // ── Generate full assessment from Whisper transcript ──────────────────────
+  const generateAssessment = async (result: WhisperResult & { duration: number }) => {
+    setAssessLoading(true);
+    setAssessError(null);
+    try {
+      const lastMetrics = metrics;
+      const res = await fetch(`${API_BASE}/analyze/realtime-assessment`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcript:              result.transcript,
+          duration_seconds:        result.duration,
+          eye_contact_percentage:  lastMetrics?.eye_contact_percentage  ?? 0,
+          face_presence_percentage: lastMetrics?.face_detected ? 100 : 0,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setAssessment(await res.json());
+    } catch (e) {
+      setAssessError(e instanceof Error ? e.message : "Assessment failed.");
+    } finally {
+      setAssessLoading(false);
+    }
   };
 
   useEffect(() => () => stop(), []);
@@ -342,7 +379,7 @@ export default function RealtimePage() {
         </div>
       )}
 
-      {/* Whisper final transcript — shown after session ends */}
+      {/* Whisper final transcript */}
       {!active && whisperResult && (
         <section style={{ marginTop: "1.5rem", borderTop: "1px solid #eee", paddingTop: "1.25rem" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
@@ -355,6 +392,16 @@ export default function RealtimePage() {
             {whisperResult.transcript || <em style={{ color: "#aaa" }}>No speech detected.</em>}
           </div>
         </section>
+      )}
+
+      {/* Full assessment — auto-generated from Whisper transcript */}
+      {!active && (
+        <AssessmentPanel
+          result={assessment}
+          loading={assessLoading}
+          error={assessError}
+          onFetch={() => whisperResult && generateAssessment(whisperResult)}
+        />
       )}
 
       {!active && connState === "idle" && (

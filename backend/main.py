@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI, UploadFile, File, HTTPException, WebSocket
 from fastapi.responses import Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from analyzers.transcriber              import transcribe, get_duration
 from analyzers.face_detector            import analyze as analyze_faces
@@ -436,6 +437,69 @@ def feedback_from_file(filename: str):
         "posture_score":               behavior["posture_score"],
         "professional_presence_score": behavior["professional_presence_score"],
     })
+
+
+# ── Real-Time Assessment (uses Whisper transcript + vision metrics) ─────────────
+
+class RealtimeAssessmentRequest(BaseModel):
+    transcript:             str
+    duration_seconds:       float
+    eye_contact_percentage: float
+    face_presence_percentage: float
+    role:                   str = "software_engineer"
+
+
+@app.post("/analyze/realtime-assessment")
+def realtime_assessment(req: RealtimeAssessmentRequest):
+    """Run full scoring pipeline on a realtime session using the Whisper transcript."""
+    transcript = req.transcript.strip()
+    duration   = max(req.duration_seconds, 1.0)
+
+    if not transcript:
+        raise HTTPException(status_code=422, detail="Empty transcript")
+
+    t        = analyze_transcript(transcript, duration)
+    c        = analyze_confidence(transcript)
+    comm     = score_communication(
+        t["speaking_rate_wpm"], t["vocabulary_diversity"],
+        t["filler_rate"],       c["confidence_language_score"],
+    )
+    fusion   = fuse(
+        face_presence_percentage  = req.face_presence_percentage,
+        eye_contact_percentage    = req.eye_contact_percentage,
+        communication_score       = comm["communication_score"],
+        confidence_language_score = c["confidence_language_score"],
+    )
+    feedback = generate_feedback({
+        "eye_contact_percentage":    req.eye_contact_percentage,
+        "face_presence_percentage":  req.face_presence_percentage,
+        "speaking_rate_wpm":         t["speaking_rate_wpm"],
+        "filler_rate":               t["filler_rate"],
+        "filler_word_count":         t["filler_word_count"],
+        "vocabulary_diversity":      t["vocabulary_diversity"],
+        "confidence_language_score": c["confidence_language_score"],
+        "communication_score":       comm["communication_score"],
+        "engagement_score":          fusion["engagement_score"],
+        "overall_score":             fusion["overall_score"],
+        "voice_confidence_score":    None,
+        "speech_clarity_score":      None,
+        "fluency_score":             None,
+        "hesitation_rate":           0,
+        "pause_count":               0,
+        "attention_score":           req.eye_contact_percentage,
+        "posture_score":             None,
+        "professional_presence_score": None,
+    })
+
+    return {
+        "transcript_analysis":    t,
+        "confidence_analysis":    c,
+        "communication_analysis": comm,
+        "face_analysis":          {"face_presence_percentage": req.face_presence_percentage, "face_detected": req.face_presence_percentage > 0},
+        "eye_contact_analysis":   {"eye_contact_percentage": req.eye_contact_percentage, "gaze_stability": "good"},
+        "fusion_analysis":        fusion,
+        "feedback":               feedback,
+    }
 
 
 # ── Real-Time WebSocket ───────────────────────────────────────────────────────
