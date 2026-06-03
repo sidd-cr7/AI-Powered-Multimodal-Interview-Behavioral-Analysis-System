@@ -3,9 +3,9 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import RealtimeDashboard from "../components/RealtimeDashboard";
 
-const WS_BASE    = "ws://localhost:8000/ws/realtime";
-const FPS        = 5;
-const RECONNECT_MS = 2000;
+const WS_BASE      = "ws://localhost:8000/ws/realtime";
+const FPS          = 3;    // 3fps — backend MediaPipe needs ~300ms per frame
+const RECONNECT_MS = 3000;
 const MAX_RETRIES  = 5;
 
 type Metrics = {
@@ -33,11 +33,12 @@ export default function RealtimePage() {
   const sessionId   = useRef(`rt_${Date.now()}`);
   const activeRef   = useRef(false);   // track inside callbacks without stale closure
 
-  const [active,     setActive]     = useState(false);
-  const [connState,  setConnState]  = useState<ConnState>("idle");
-  const [metrics,    setMetrics]    = useState<Metrics | null>(null);
-  const [error,      setError]      = useState<string | null>(null);
-  const [frameCount, setFrameCount] = useState(0);
+  const [active,      setActive]     = useState(false);
+  const [connState,   setConnState]  = useState<ConnState>("idle");
+  const [metrics,     setMetrics]    = useState<Metrics | null>(null);
+  const [error,       setError]      = useState<string | null>(null);
+  const [frameCount,  setFrameCount] = useState(0);
+  const [closeInfo,   setCloseInfo]  = useState<string | null>(null);
 
   // ── Attach stream to video element after it mounts ────────────────────────
   useEffect(() => {
@@ -125,23 +126,25 @@ export default function RealtimePage() {
     };
 
     ws.onerror = (e) => {
-      console.error("[WS] Error", e);
+      console.error("[WS] Error event", e);
     };
 
     ws.onclose = (e) => {
-      console.log("[WS] Closed — code:", e.code, "reason:", e.reason);
+      const info = `code=${e.code} reason=${e.reason || "none"} clean=${e.wasClean}`;
+      console.log("[WS] Closed —", info);
+      setCloseInfo(info);
       if (frameTimer.current) { clearInterval(frameTimer.current); frameTimer.current = null; }
-      setConnState("reconnecting");
 
       if (!activeRef.current) { setConnState("stopped"); return; }
 
+      setConnState("reconnecting");
       if (retriesRef.current < MAX_RETRIES) {
         retriesRef.current++;
-        console.log(`[WS] Reconnect attempt ${retriesRef.current}/${MAX_RETRIES} in ${RECONNECT_MS}ms`);
+        console.log(`[WS] Reconnect ${retriesRef.current}/${MAX_RETRIES} in ${RECONNECT_MS}ms`);
         setTimeout(openWS, RECONNECT_MS);
       } else {
         setConnState("failed");
-        setError(`WebSocket failed after ${MAX_RETRIES} attempts. Make sure the backend is running on port 8000.`);
+        setError(`WebSocket failed after ${MAX_RETRIES} attempts. Last close: ${info}`);
       }
     };
   }, [sendFrame, startSpeech]);
@@ -220,10 +223,14 @@ export default function RealtimePage() {
       {error && (
         <div style={{ marginTop: "0.75rem", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: 6, padding: "0.75rem 1rem", fontSize: "0.9rem" }}>
           ⚠ {error}
+          {closeInfo && <div style={{ marginTop: "0.3rem", fontSize: "0.75rem", color: "#888", fontFamily: "monospace" }}>{closeInfo}</div>}
           <div style={{ marginTop: "0.4rem", fontSize: "0.8rem", color: "#555" }}>
-            Run: <code>cd backend &amp;&amp; venv\Scripts\activate &amp;&amp; uvicorn main:app --port 8000</code>
+            Run: <code>uvicorn main:app --host 0.0.0.0 --port 8000 --reload</code>
           </div>
         </div>
+      )}
+      {closeInfo && connState === "reconnecting" && (
+        <div style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "#888", fontFamily: "monospace" }}>Last close: {closeInfo}</div>
       )}
 
       {/* Video + hidden canvas */}

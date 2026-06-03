@@ -10,6 +10,8 @@ type Metrics = {
   filler_words:           number;
   session_duration:       string;
   transcript:             string;
+  frames_received?:       number;
+  frames_processed?:      number;
 };
 
 type Props = { metrics: Metrics | null; connected: boolean };
@@ -61,6 +63,13 @@ export default function RealtimeDashboard({ metrics, connected }: Props) {
         <Card label="Filler Words" value={m ? String(m.filler_words) : "—"}
           color={m && m.filler_words === 0 ? "#28a745" : m && m.filler_words > 5 ? "#dc3545" : "#fd7e14"} />
       </div>
+
+      {/* Diagnostics */}
+      {m && (m.frames_received !== undefined) && (
+        <div style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "#888", fontFamily: "monospace" }}>
+          frames rx: {m.frames_received} | processed: {m.frames_processed}
+        </div>
+      )}
 
       {/* Live transcript */}
       <div style={transcriptBox}>
