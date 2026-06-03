@@ -4,7 +4,9 @@ type Metrics = {
   face_detected:          boolean;
   face_count:             number;
   current_gaze:           string;
+  gaze_confidence:        number;
   eye_contact_percentage: number;
+  head_orientation:       { yaw: number; pitch: number; roll: number };
   words_spoken:           number;
   current_wpm:            number;
   filler_words:           number;
@@ -55,6 +57,9 @@ export default function RealtimeDashboard({ metrics, connected }: Props) {
         <Card label="Current Gaze"
           value={m ? m.current_gaze : "—"}
           color={m ? (GAZE_COLOR[m.current_gaze] ?? "#aaa") : "#aaa"} />
+        <Card label="Gaze Conf."
+          value={m ? `${Math.round(m.gaze_confidence * 100)}%` : "—"}
+          color={m && m.gaze_confidence >= 0.7 ? "#28a745" : "#fd7e14"} />
         <Card label="Eye Contact" value={m ? `${m.eye_contact_percentage}%` : "—"}
           color={m && m.eye_contact_percentage >= 70 ? "#28a745" : "#fd7e14"} />
         <Card label="Words Spoken" value={m ? String(m.words_spoken) : "—"} />
@@ -63,6 +68,13 @@ export default function RealtimeDashboard({ metrics, connected }: Props) {
         <Card label="Filler Words" value={m ? String(m.filler_words) : "—"}
           color={m && m.filler_words === 0 ? "#28a745" : m && m.filler_words > 5 ? "#dc3545" : "#fd7e14"} />
       </div>
+
+      {/* Head pose */}
+      {m?.head_orientation && (
+        <div style={{ marginTop: "0.5rem", fontSize: "0.75rem", color: "#888", fontFamily: "monospace" }}>
+          Head — yaw: {m.head_orientation.yaw}° &nbsp; pitch: {m.head_orientation.pitch}° &nbsp; roll: {m.head_orientation.roll}°
+        </div>
+      )}
 
       {/* Diagnostics */}
       {m && (m.frames_received !== undefined) && (

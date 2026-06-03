@@ -12,12 +12,16 @@ type Metrics = {
   face_detected:          boolean;
   face_count:             number;
   current_gaze:           string;
+  gaze_confidence:        number;
   eye_contact_percentage: number;
+  head_orientation:       { yaw: number; pitch: number; roll: number };
   words_spoken:           number;
   current_wpm:            number;
   filler_words:           number;
   session_duration:       string;
   transcript:             string;
+  frames_received?:       number;
+  frames_processed?:      number;
 };
 
 type ConnState = "idle" | "connecting" | "connected" | "reconnecting" | "failed" | "stopped";
@@ -27,7 +31,8 @@ export default function RealtimePage() {
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const wsRef       = useRef<WebSocket | null>(null);
   const frameTimer  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const speechRef   = useRef<SpeechRecognition | null>(null);
+  const speechRef      = useRef<SpeechRecognition | null>(null);
+  const finalTextRef    = useRef("");        // persists across speech API restarts
   const streamRef   = useRef<MediaStream | null>(null);
   const retriesRef  = useRef(0);
   const sessionId   = useRef(`rt_${Date.now()}`);
@@ -68,32 +73,42 @@ export default function RealtimePage() {
   // ── Web Speech API ────────────────────────────────────────────────────────
   const startSpeech = useCallback(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) { console.warn("Web Speech API not available in this browser"); return; }
+    if (!SR) { console.warn("Web Speech API not available"); return; }
 
     const rec = new SR() as SpeechRecognition;
     rec.continuous     = true;
     rec.interimResults = true;
     rec.lang           = "en-US";
 
-    let final = "";
     rec.onresult = (e: SpeechRecognitionEvent) => {
       let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) final += t + " ";
+        if (e.results[i].isFinal) finalTextRef.current += t + " ";
         else interim = t;
       }
-      wsRef.current?.send(JSON.stringify({ type: "transcript", text: (final + interim).trim() }));
+      const full = (finalTextRef.current + interim).trim();
+      wsRef.current?.send(JSON.stringify({ type: "transcript", text: full }));
     };
+
     rec.onerror = (e: SpeechRecognitionErrorEvent) => {
-      if (e.error !== "no-speech") console.warn("Speech error:", e.error);
+      // "network" and "no-speech" are transient — browser will fire onend and we restart
+      if (e.error !== "no-speech" && e.error !== "network")
+        console.warn("Speech error:", e.error);
     };
+
     rec.onend = () => {
-      if (activeRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
-        try { setTimeout(() => { if (activeRef.current) rec.start(); }, 100); }
-        catch { /* already stopped */ }
-      }
+      // Always restart while session is active — decoupled from WS state
+      if (!activeRef.current) return;
+      setTimeout(() => {
+        if (!activeRef.current) return;
+        try {
+          const r = speechRef.current;
+          if (r) r.start();
+        } catch { /* already running */ }
+      }, 200);
     };
+
     rec.start();
     speechRef.current = rec;
   }, []);
@@ -175,6 +190,7 @@ export default function RealtimePage() {
     activeRef.current = false;
     if (frameTimer.current) { clearInterval(frameTimer.current); frameTimer.current = null; }
     if (speechRef.current)  { speechRef.current.stop(); speechRef.current = null; }
+    finalTextRef.current = "";
     if (wsRef.current)      { wsRef.current.close(1000, "user stopped"); wsRef.current = null; }
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
