@@ -38,7 +38,7 @@ pip install -r requirements.txt
 4. Start the backend server using Uvicorn:
 
 ```bash
-uvicorn main:app --reload
+py -3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 > If you have a `uvicorn.ini` file and want to use it, you can also run:
