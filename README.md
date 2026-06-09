@@ -17,7 +17,9 @@ cd "c:\Users\l\OneDrive\Documents\PROJECTS\AI-Powered Multimodal Interview Behav
 ## Activate Venv
 1. Activate your Python virtual environment if needed.
 
-.venv\Scripts\activate
+```bash
+venv\Scripts\activate
+```
 
 ## Backend
 
