@@ -15,9 +15,12 @@ Open a terminal and navigate to the repository root:
 cd "c:\Users\l\OneDrive\Documents\PROJECTS\AI-Powered Multimodal Interview Behavioral Analysis System"
 ```
 
+1. Activate your Python virtual environment if needed.
+.venv\Scripts\activate
+
 ## Backend
 
-1. Change to the backend directory:
+2. Change to the backend directory:
 
 ```bash
 cd backend
