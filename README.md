@@ -40,6 +40,12 @@ pip install -r requirements.txt
 ```bash
 py -3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
+or 
+
+```bash
+$env:PYTHONPATH="."
+py -3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
 
 > If you have a `uvicorn.ini` file and want to use it, you can also run:
 >
